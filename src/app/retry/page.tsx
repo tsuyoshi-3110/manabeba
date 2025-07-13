@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -13,140 +14,156 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
-/* ───────── 型 ───────── */
-type Quiz = { question: string; options: string[]; answer: string };
+/* Mermaid は CSR 専用 */
+const Mermaid = dynamic(() => import("react-mermaid2").then((m) => m.default), {
+  ssr: false,
+});
 
-/* ───────── 文字列正規化 ─────────
-   ・記号／空白を取り除き値だけ残す                  */
-const normalize = (s: string) =>
-  s
-    .replace(/^[A-DＡ-Ｄ]\s*[:．.]\s*/, "") // 「A:」「Ａ．」などラベル+区切り
-    .replace(/^[①-⑩]\s*/, "")            // ① ② … を除去したい場合
-    .trim();
-
-/* ───────── ラベル抽出（A〜D） ───────── */
-const getLabel = (s: string) => {
-  const m = s.trim().match(/^([A-DＡ-Ｄ])(?:\s*[:．.])?/);
-  return m ? m[1].toUpperCase() : null;
+/* ---------- 型 ---------- */
+type Quiz = {
+  question: string;
+  options: string[];
+  answer: string; // 例 "B" または "正方形"
+  diagram?: string;
 };
 
-/* ───────── 正誤判定 ─────────
-   ・answer が “A”〜“D” だけならラベル比較
-   ・それ以外なら値を normalize 同士で比較            */
-const isCorrect = (opt: string, answer: string) => {
-  const labelAns = answer.trim().toUpperCase();
-  const labelOpt = (getLabel(opt) ?? "").toUpperCase();
+/* ---------- ユーティリティ ---------- */
+const normalize = (s: string) =>
+  s
+    .replace(/^[A-DＡ-Ｄ]\s*[:．.]\s*/, "")
+    .replace(/^[①-⑩]\s*/, "")
+    .trim();
 
-  /* ラベル回答パターン (A〜D) */
-  if (/^[A-D]$/.test(labelAns)) {
-    return labelAns === labelOpt;
+/** answer が A〜D なら 0-based の番号へ */
+const labelToIndex = (a: string) => "ABCD".indexOf(a.toUpperCase());
+
+/** 正誤判定 : optionIdx を受け取って比較 */
+const isCorrect = (opt: string, idx: number, answer: string) => {
+  const a = answer.trim().toUpperCase();
+
+  /* ▼ パターン① answer がラベル (A〜D) */
+  if (/^[A-D]$/.test(a)) {
+    return idx === labelToIndex(a); // ← 位置で判定
   }
 
-  /* 値そのものが回答パターン */
+  /* ▼ パターン② 値そのものが正解文字列 */
   return normalize(opt) === normalize(answer);
 };
 
-/* ───────── Component ───────── */
+/* ---------- Component ---------- */
 export default function RetryQuizPage() {
-  const sp     = useSearchParams();
+  /* ----- URL Query ----- */
+  const sp = useSearchParams();
   const router = useRouter();
-
-  /* URL パラメータ */
-  const grade   = sp.get("grade")   ?? "";
-  const term    = sp.get("term")    ?? "";
+  const grade = sp.get("grade") ?? "";
+  const term = sp.get("term") ?? "";
   const subject = sp.get("subject") ?? "";
-  const topic   = sp.get("topic")   ?? "";
+  const topic = sp.get("topic") ?? "";
 
-  /* state */
-  const [quiz, setQuiz]           = useState<Quiz | null>(null);
-  const [idx , setIdx]            = useState(0);       // 0–4
-  const [correctCnt, setCorrect]  = useState(0);
-  const [selected, setSelected]   = useState<string | null>(null);
-  const [msg, setMsg]             = useState<string | null>(null);
-  const [uid, setUid]             = useState<string | null>(null);
-  const [loading, setLoading]     = useState(false);
+  /* ----- State ----- */
+  const TOTAL = 5;
+  const [idx, setIdx] = useState(0);
+  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [selIdx, setSelIdx] = useState<number | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [correct, setCorrect] = useState(0);
+  const [loading, setLoad] = useState(false);
+  const [uid, setUid] = useState<string | null>(null);
 
-  /* uid 取得 */
-  useEffect(() =>
-    onAuthStateChanged(auth, (u) => setUid(u?.uid ?? null)), []);
+  /* ----- Auth ----- */
+  useEffect(() => onAuthStateChanged(auth, (u) => setUid(u?.uid ?? null)), []);
 
-  /* 1問取得 */
-  const loadQuiz = useCallback(async () => {
-    setLoading(true);
-    setSelected(null);
+  /* ----- 1 問取得 ----- */
+  const load = useCallback(async () => {
+    setLoad(true);
+    setSelIdx(null);
     setMsg(null);
 
     const res = await fetch("/api/generate-quiz", {
-      method : "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body   : JSON.stringify({ grade, term, subject, topic }),
+      body: JSON.stringify({ grade, term, subject, topic }),
     });
-
-    const q: Quiz = await res.json();
-    setQuiz(q);
-    setLoading(false);
+    const data: Quiz = await res.json();
+    setQuiz(data);
+    setLoad(false);
   }, [grade, term, subject, topic]);
 
-  /* 初回 + idx 変化で発火 */
-  useEffect(() => { if (idx < 5) loadQuiz(); }, [idx, loadQuiz]);
+  useEffect(() => {
+    if (idx < TOTAL) load();
+  }, [idx, load]);
 
-  /* 選択処理 */
-  const handleSelect = (opt: string) => {
+  /* ----- 選択 ----- */
+  const handleSelect = (i: number) => {
     if (!quiz) return;
-    setSelected(opt);
+    setSelIdx(i);
 
-    const ok = isCorrect(opt, quiz.answer);
+    const ok = isCorrect(quiz.options[i], i, quiz.answer);
     setCorrect((c) => c + (ok ? 1 : 0));
     setMsg(ok ? "正解！🎉" : `不正解… 正解: ${quiz.answer}`);
   };
 
-  /* 次へ or 終了 */
+  /* ----- 次へ or 終了 ----- */
   const handleNext = async () => {
-    if (idx < 4) {
+    if (idx + 1 < TOTAL) {
       setIdx((i) => i + 1);
       return;
     }
 
-    /* 4/5 以上正解なら間違い履歴を削除 */
-    if (correctCnt + (selected ? (isCorrect(selected, quiz!.answer) ? 1 : 0) : 0) >= 4 && uid) {
+    /* 4/5 正解で誤答削除 */
+    if (
+      uid &&
+      correct +
+        (selIdx !== null &&
+        isCorrect(quiz!.options[selIdx], selIdx, quiz!.answer)
+          ? 0
+          : 0) >=
+        4
+    ) {
       const q = query(
         collection(db, "users", uid, "mistakes"),
-        where("grade"  , "==", grade),
-        where("term"   , "==", term),
+        where("grade", "==", grade),
+        where("term", "==", term),
         where("subject", "==", subject),
-        where("topic"  , "==", topic)
+        where("topic", "==", topic)
       );
       const snap = await getDocs(q);
       await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, d.ref.path))));
+      alert("🎉 合格おめでとう！");
     }
 
-    alert("再挑戦終了！");
     router.back();
   };
 
-  /* ───────── JSX ───────── */
+  /* ----- UI ----- */
   return (
     <main className="p-6 max-w-xl mx-auto space-y-6">
       <h1 className="text-xl font-bold text-center">
-        再挑戦 ({subject} / {topic}) {idx + 1}/5
+        再挑戦 ({subject} / {topic}) {idx + 1}/{TOTAL}
       </h1>
 
       {loading && <p className="text-center text-gray-500">問題を生成中...</p>}
 
       {quiz && !loading && (
         <>
-          <p className="font-semibold">{quiz.question}</p>
+          {quiz.diagram?.trim() && (
+            <div className="border rounded p-2 mb-4 bg-white max-h-72 overflow-auto">
+              <Mermaid chart={quiz.diagram} config={{ theme: "base" }} />
+            </div>
+          )}
+
+          <p className="font-semibold mb-2">{quiz.question}</p>
 
           {quiz.options.map((o, i) => (
             <button
               key={i}
-              disabled={!!selected}
-              onClick={() => handleSelect(o)}
+              disabled={selIdx !== null}
+              onClick={() => handleSelect(i)}
               className={`w-full px-4 py-2 border rounded text-left mb-2 ${
-                selected
-                  ? isCorrect(o, quiz.answer)
+                selIdx !== null
+                  ? isCorrect(o, i, quiz.answer)
                     ? "bg-green-200"
-                    : o === selected
+                    : i === selIdx
                     ? "bg-red-200"
                     : "bg-gray-100"
                   : "hover:bg-gray-100"
@@ -158,12 +175,12 @@ export default function RetryQuizPage() {
 
           {msg && <p className="text-center font-semibold">{msg}</p>}
 
-          {selected && (
+          {selIdx !== null && (
             <button
-              className="mt-4 bg-blue-600 text-white px-6 py-2 rounded"
               onClick={handleNext}
+              className="mt-4 bg-blue-600 text-white px-6 py-2 rounded"
             >
-              {idx < 4 ? "次の問題 →" : "終了"}
+              {idx + 1 < TOTAL ? "次の問題 →" : "終了"}
             </button>
           )}
         </>

@@ -23,8 +23,6 @@ export default function HomePage() {
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen px-4 space-y-6 bg-gray-50">
-
-
       <Image
         src="/images/logoClear.png"
         alt="Manabeba Logo"
@@ -43,14 +41,7 @@ export default function HomePage() {
             onClick={() => router.push("/login/email")}
             className="w-64 text-lg"
           >
-            メールアドレスでログイン
-          </Button>
-
-          <Button
-            onClick={() => router.push("/login/google")}
-            className="w-64 text-lg"
-          >
-            Googleでログイン
+            ログイン
           </Button>
 
           <div className="mt-4 text-sm text-gray-500">
@@ -62,13 +53,7 @@ export default function HomePage() {
               onClick={() => router.push("/signup/email")}
               className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-sm"
             >
-              Email アカウント作成
-            </Button>
-            <Button
-              onClick={() => router.push("/signup/google")}
-              className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-sm"
-            >
-              Google アカウント作成
+              アカウント作成
             </Button>
           </div>
         </>
@@ -86,8 +71,11 @@ export default function HomePage() {
               ▶ 選択画面へ進む
             </Button>
 
-              {/* ★ 復習ボタン */}
-            <Button onClick={() => router.push("/review")} className="w-64 text-lg bg-orange-600 hover:bg-orange-700">
+            {/* ★ 復習ボタン */}
+            <Button
+              onClick={() => router.push("/review")}
+              className="w-64 text-lg bg-orange-600 hover:bg-orange-700"
+            >
               🔁 復習
             </Button>
 

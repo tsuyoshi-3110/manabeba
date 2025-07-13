@@ -75,8 +75,6 @@ export default function ResultPage() {
 
   /* ── YouTube 推薦 ──────────── */
   useEffect(() => {
-    if (accuracy > 60 || !latestMistakes.length) return;
-
     const { subject, grade, term, topic } = latestMistakes[0];
     fetch("/api/youtube-recommend", {
       method: "POST",

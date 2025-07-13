@@ -8,19 +8,19 @@ import {
   User,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   // ログイン状態を監視
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -29,6 +29,7 @@ export default function LoginPage() {
     setError("");
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      router.push("/");
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -42,14 +43,6 @@ export default function LoginPage() {
     await signOut(auth);
     setUser(null);
   };
-
-  if (loading) {
-    return (
-      <main className="h-screen flex items-center justify-center">
-        <p className="text-gray-500">読み込み中...</p>
-      </main>
-    );
-  }
 
   if (user) {
     return (

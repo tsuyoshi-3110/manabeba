@@ -12,14 +12,11 @@ import { auth } from "@/lib/firebase";
 export default function GoogleSignupPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         router.push("/");
-      } else {
-        setLoading(false); // 未ログイン状態が確認できたら表示する
       }
     });
     return () => unsubscribe();
@@ -37,13 +34,7 @@ export default function GoogleSignupPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <main className="flex items-center justify-center h-screen">
-        <p className="text-gray-500">読み込み中...</p>
-      </main>
-    );
-  }
+
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
